@@ -1,0 +1,14 @@
+{
+  "name": "solar-us",
+  "query": "Solar companies in the United States with 50 or more employees",
+  "target": 10,
+  "countries": ["US"],
+  "employeesMin": 50,
+  "concurrency": 8,
+  "columns": [
+    { "header": "What they do", "question": "In one sentence, what does this company do?", "research": "page" },
+    { "header": "CEO", "question": "Who is the CEO? Answer with just the name.", "research": "web" },
+    { "header": "Free tier", "question": "Does their pricing page mention a free tier or free trial?", "type": "boolean", "research": "web" },
+    { "header": "Employees", "question": "How many employees do they have? Answer with a number.", "type": "number", "research": "web" }
+  ]
+}

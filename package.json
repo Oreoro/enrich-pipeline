@@ -1,0 +1,43 @@
+{
+  "name": "enrich-pipeline",
+  "version": "0.1.0",
+  "description": "Turn a prompt or a CSV into an enriched CSV: Context.dev for the web, any OpenAI-compatible model for the reasoning. No database, no UI.",
+  "type": "module",
+  "bin": {
+    "enrich-pipeline": "bin/enrich-pipeline.mjs"
+  },
+  "exports": "./src/cli.mjs",
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/enrich-pipeline.mjs",
+    "test": "node --test"
+  },
+  "keywords": [
+    "enrichment",
+    "lead-generation",
+    "context.dev",
+    "csv",
+    "web-research",
+    "llm",
+    "openai-compatible",
+    "cloudflare-workers-ai"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Oreoro/enrich-pipeline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Oreoro/enrich-pipeline/issues"
+  },
+  "homepage": "https://github.com/Oreoro/enrich-pipeline#readme"
+}

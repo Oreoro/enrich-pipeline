@@ -1,0 +1,12 @@
+{
+  "name": "my-list",
+  "inputCsv": "examples/input.csv",
+  "target": 3,
+  "concurrency": 6,
+  "columns": [
+    { "header": "What they do", "question": "In one sentence, what does this company do?", "research": "page" },
+    { "header": "CEO", "question": "Who is the CEO? Answer with just the name.", "research": "web" },
+    { "header": "Open source", "question": "Is their core product open source?", "type": "boolean", "research": "web" },
+    { "header": "Careers page", "question": "What is the URL of their careers page?", "research": "web" }
+  ]
+}

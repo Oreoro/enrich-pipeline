@@ -1,5 +1,3 @@
-/** Minimal Context.dev client: the three endpoints this pipeline needs, with credit accounting and retries. */
-
 const BASE = 'https://api.context.dev/v1';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,7 +42,6 @@ export class ContextClient {
 		}
 	}
 
-	/** One page of company matches. Costs 2 credits. */
 	async companySearch({ query, countries, employeesMin, employeesMax, cursor }) {
 		const filters = {};
 		if (countries?.length) filters.countries = countries;
@@ -54,7 +51,6 @@ export class ContextClient {
 		return { results: data?.results ?? [], next: data?.next_cursor ?? null };
 	}
 
-	/** Web search with optional focused passages. Costs 1 credit. */
 	async webSearch({ query, numResults = 5, includeDomains, country, freshness, highlights = true }) {
 		const data = await this.#post('/web/search', {
 			query: query.slice(0, 500),
@@ -73,7 +69,6 @@ export class ContextClient {
 		}));
 	}
 
-	/** Page text as markdown, or only the passages relevant to `query`. Costs 1 credit. */
 	async scrape(url, { query, maxChars = 6000, maxAgeMs = 3 * 24 * 60 * 60 * 1000 } = {}) {
 		const focused = Boolean(query);
 		const data = await this.#post('/web/scrape', {

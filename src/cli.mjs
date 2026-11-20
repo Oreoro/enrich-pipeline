@@ -26,7 +26,6 @@ Docs: README.md
 
 const log = (...parts) => console.log(...parts);
 
-/** Parallel pool: runs `worker` over `items` with at most `size` in flight, preserving order. */
 export async function mapPool(items, size, worker) {
 	const queue = [...items.entries()];
 	const results = [];
@@ -93,8 +92,6 @@ export async function main(argv = process.argv.slice(2)) {
 	const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 	const outDir = resolve(flag('out') ?? join(root, 'out', `${(config.name ?? 'run').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-${stamp}`));
 
-	/* ── 1. Find rows ─────────────────────────────────────────────── */
-
 	log(`\n▶ ${config.name ?? 'run'} — ${target} rows`);
 
 	const found = [];
@@ -113,13 +110,11 @@ export async function main(argv = process.argv.slice(2)) {
 		}
 		log(`  ${config.inputCsv}: ${found.length}/${target} rows`);
 		if (config.lookupCompany !== false) {
-			// A CSV gives a name and a domain only; look the company up so the row carries the usual context.
 			await mapPool(found, Math.min(concurrency, found.length), async (row) => {
-				try {
-					const page = await context.companySearch({ query: row.domain });
-					const match = page.results.find((hit) => normaliseDomain(hit.domain) === row.domain) ?? page.results[0];
-					if (match) Object.assign(row, { ...match, name: row.name, domain: row.domain });
-				} catch { /* the AI columns still work without the company record */ }
+				const match = await context.companySearch({ query: row.domain })
+					.then((page) => page.results.find((hit) => normaliseDomain(hit.domain) === row.domain) ?? page.results[0] ?? null)
+					.catch(() => null);
+				if (match) Object.assign(row, { ...match, name: row.name, domain: row.domain });
 			});
 			log(`  company records: ${found.filter((row) => row.description).length}/${found.length} (${context.credits} credits)`);
 		}
@@ -154,8 +149,6 @@ export async function main(argv = process.argv.slice(2)) {
 
 	if (!columns.length) throw new Error('Config has no "columns" to fill.');
 
-	/* ── 2. Enrich ────────────────────────────────────────────────── */
-
 	mkdirSync(outDir, { recursive: true });
 	const jsonlPath = join(outDir, 'rows.jsonl');
 	writeFileSync(jsonlPath, '');
@@ -167,7 +160,6 @@ export async function main(argv = process.argv.slice(2)) {
 		maxTokens: config.maxTokens ?? 4096,
 	});
 
-	/** One page read per URL per run, shared by every column on that row: each scrape costs a credit and a round trip. */
 	const pageCache = new Map();
 	function page(url, maxChars) {
 		const key = `${url}|${maxChars}`;
@@ -175,7 +167,6 @@ export async function main(argv = process.argv.slice(2)) {
 		return pageCache.get(key);
 	}
 
-	/** Deterministic research: the pipeline decides what to read, not the model. Cheaper and more predictable than a tool loop. */
 	async function research(row, column) {
 		const mode = column.research ?? 'none';
 		const question = column.question;
@@ -186,7 +177,6 @@ export async function main(argv = process.argv.slice(2)) {
 				const read = await page(url, column.maxChars ?? 12_000);
 				return { context: `PAGE (${read.url})${read.title ? ` — ${read.title}` : ''}:\n${read.text}`, sources: [read.url] };
 			} catch (error) {
-				// A parked or dead domain should not cost the cell: fall back to searching for the answer instead.
 				if (column.fallback === false) throw error;
 				return research(row, { ...column, research: 'web' });
 			}
@@ -199,10 +189,8 @@ export async function main(argv = process.argv.slice(2)) {
 		});
 		let text = blocks.join('\n\n');
 		if (column.readTop !== false && hits[0] && !hits[0].highlights?.length) {
-			try {
-				const read = await context.scrape(hits[0].url, { query: question, maxChars: column.maxChars ?? 6000 });
-				text += `\n\nPAGE (${read.url}):\n${read.text}`;
-			} catch { /* a dead top hit still leaves the other passages */ }
+			const read = await context.scrape(hits[0].url, { query: question, maxChars: column.maxChars ?? 6000 }).catch(() => null);
+			if (read) text += `\n\nPAGE (${read.url}):\n${read.text}`;
 		}
 		return { context: `WEB RESULTS:\n${text}`, sources };
 	}
@@ -232,7 +220,6 @@ export async function main(argv = process.argv.slice(2)) {
 	let doneCells = 0;
 	let doneRows = 0;
 
-	// Cells are independent, so the pool runs across rows *and* columns: one slow question never stalls a row.
 	const cells = rows.map(() => ({}));
 	const tasks = rows.flatMap((row, rowIndex) => columns.map((column) => ({ row, rowIndex, column })));
 	const perRowRemaining = rows.map(() => columns.length);
@@ -252,11 +239,8 @@ export async function main(argv = process.argv.slice(2)) {
 		}
 	});
 
-	/* ── 3. Output ────────────────────────────────────────────────── */
-
 	const enriched = rows.map((row, index) => ({ row: index, company: row, cells: cells[index] }));
 
-	// Keep one header per column: an AI column named "Employees" must not collide with the Context.dev field of the same name.
 	const aiHeaders = new Set(columns.map((column) => column.header));
 	const base = (header) => (aiHeaders.has(header) ? `${header} (context.dev)` : header);
 	const csvColumns = [

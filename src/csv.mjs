@@ -1,5 +1,3 @@
-/** CSV writing that survives quotes, commas and newlines in values. */
-
 const cell = (value) => {
 	if (value === null || value === undefined) return '';
 	const text = Array.isArray(value) ? value.join('; ') : String(value);
@@ -12,7 +10,6 @@ export function toCsv(rows, columns) {
 	return `${lines.join('\n')}\n`;
 }
 
-/** Parses RFC 4180 CSV (quoted fields, embedded commas/newlines, doubled quotes) into objects keyed by header. */
 export function fromCsv(text) {
 	const records = [];
 	let field = '';

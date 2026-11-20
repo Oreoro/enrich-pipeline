@@ -1,6 +1,8 @@
-/** DeepSeek (or any OpenAI-compatible model) over the Cloudflare AI Gateway, with strict JSON schema output. */
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const parseJson = (text) => {
+	try { return JSON.parse(text); } catch { return null; }
+};
 
 export class Model {
 	tokens = 0;
@@ -14,7 +16,6 @@ export class Model {
 		this.retries = retries;
 	}
 
-	/** Returns a parsed object matching `schema`. Throws if the model returns nothing usable. */
 	async json({ system, prompt, schema, name = 'result' }) {
 		for (let attempt = 0; ; attempt++) {
 			this.calls++;
@@ -38,8 +39,7 @@ export class Model {
 				continue;
 			}
 			const text = await response.text();
-			let data;
-			try { data = JSON.parse(text); } catch { data = null; }
+			const data = parseJson(text);
 			this.tokens += Number(data?.usage?.total_tokens ?? 0);
 			if (!response.ok) {
 				const retryable = response.status === 429 || response.status >= 500;
@@ -51,7 +51,6 @@ export class Model {
 			}
 			const content = data?.choices?.[0]?.message?.content;
 			if (typeof content !== 'string' || !content.trim()) {
-				// Reasoning models occasionally spend the whole budget thinking and emit nothing.
 				if (attempt < this.retries) { await sleep(1000); continue; }
 				throw new Error('model returned no content');
 			}
@@ -59,7 +58,8 @@ export class Model {
 				return JSON.parse(content);
 			} catch {
 				const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(content);
-				if (fenced) { try { return JSON.parse(fenced[1]); } catch { /* fall through */ } }
+				const recovered = fenced ? parseJson(fenced[1]) : null;
+				if (recovered) return recovered;
 				if (attempt < this.retries) { await sleep(1000); continue; }
 				throw new Error(`model returned invalid JSON: ${content.slice(0, 160)}`);
 			}

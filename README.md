@@ -1,8 +1,7 @@
 # enrich-pipeline
 
-Turn a prompt — or a CSV you already have — into an enriched CSV. **Context.dev** does the web (search, scraping,
-company data), **any OpenAI-compatible model** does the reasoning. No database, no browser, no UI: one Node process,
-zero dependencies.
+Turns a prompt or a CSV into an enriched CSV. Context.dev provides web search, scraping and company data; an
+OpenAI-compatible chat model answers one question per cell. Node 20+, no dependencies, no database.
 
 ```bash
 node bin/enrich-pipeline.mjs examples/solar-us.json
@@ -13,58 +12,44 @@ node bin/enrich-pipeline.mjs examples/solar-us.json
   page 1: 10 results → 10/10 rows (2 credits)
   [1/10] Universal Solar Products Inc  What they do="It manufactures solar water heaters…"  CEO="Osvaldo Rios"  Employees=68
   [2/10] Akash Corporation             What they do="Akash Corporation provides solar…"     CEO=null            Employees=52
-  …
 ✔ 10 rows × 4 columns in 96.4s
   context.dev: 61 credits · model: 40 calls, 53k tokens
   null answers: 4 · failures: 0
 ```
 
-## Why
-
-The usual stack for this is a spreadsheet app plus a queue plus a database. If all you want is *rows with answers and
-sources*, that is a lot of moving parts. This is the same job as a script: read config → find rows → research each cell
-→ write CSV + JSONL.
-
-Two design choices keep it cheap and predictable:
-
-- **Deterministic research.** The pipeline decides what to read (`page` or `web`), instead of letting the model drive a
-  tool loop. No dependency on tool-call support, no runaway loops, one or two Context.dev credits per cell.
-- **One question, one call.** Each cell is a single strict JSON-schema call that returns `value`, `confidence` and
-  `sources`. Failures are recorded per cell and never abort the run.
-
 ## Install
-
-Requires Node 20+. There is nothing to install — no dependencies.
 
 ```bash
 git clone https://github.com/Oreoro/enrich-pipeline
 cd enrich-pipeline
-cp .env.example .env      # add your keys
+cp .env.example .env
 node bin/enrich-pipeline.mjs --usage
 ```
 
-Or install the CLI globally: `npm i -g .` then `enrich-pipeline --help`.
+Global CLI: `npm i -g .` then `enrich-pipeline --help`.
 
 ## Keys
 
-| Variable | What it is |
+| Variable | Description |
 | --- | --- |
-| `CONTEXT_DEV_API_KEY` | Context.dev key — search, scraping, company data ([get one](https://context.dev)) |
-| `OPENAI_API_KEY` | Key for the chat endpoint (an OpenAI key, or a Cloudflare API token) |
+| `CONTEXT_DEV_API_KEY` | Context.dev key ([context.dev](https://context.dev)) |
+| `OPENAI_API_KEY` | Key for the chat endpoint (OpenAI key or Cloudflare API token) |
 | `OPENAI_BASE_URL` | Chat endpoint, e.g. `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | Model id, e.g. `gpt-4.1-mini` or `@cf/deepseek-ai/deepseek-v4.1-flash-1017` |
 
-No OpenAI account? Point `OPENAI_BASE_URL` at a Cloudflare AI Gateway `/compat` endpoint and use a Workers AI model id.
-The model must support **strict JSON schema** output (`response_format: json_schema`).
+Workers AI through an AI Gateway works with `OPENAI_BASE_URL=https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway>/compat`.
+The model must support strict JSON schema output (`response_format: json_schema`).
 
-## Run
+## Commands
 
 ```bash
-enrich-pipeline examples/solar-us.json              # discover rows from a prompt, then enrich
+enrich-pipeline examples/solar-us.json              # discover rows from a query, then enrich
 enrich-pipeline examples/my-list.json               # enrich an existing CSV
 enrich-pipeline examples/solar-us.json --limit 3    # cap rows
 enrich-pipeline examples/solar-us.json --dry-run    # find rows, report cost, enrich nothing
-enrich-pipeline --usage                             # Context.dev credits left
+enrich-pipeline examples/solar-us.json --out dir/   # output directory
+enrich-pipeline --usage                             # Context.dev credits remaining
+enrich-pipeline --help
 ```
 
 ## Config
@@ -88,89 +73,93 @@ enrich-pipeline --usage                             # Context.dev credits left
 
 ### Row discovery
 
-| Field | Meaning |
-| --- | --- |
-| `query` | Plain-language description of the companies to find |
-| `target` | How many rows to collect (default 10) |
-| `countries` | Country codes to filter on, e.g. `["US", "GB"]` |
-| `employeesMin` / `employeesMax` | Headcount filter |
-| `maxPages` | Stop after this many search pages (default 10) |
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `query` | string | — | Plain-language company description |
+| `target` | number | 10 | Rows to collect |
+| `countries` | string[] | — | Country codes, e.g. `["US", "GB"]` |
+| `employeesMin` / `employeesMax` | number | — | Headcount filter |
+| `maxPages` | number | 10 | Search pages to walk |
 
-### Or bring your own list
+### CSV input
 
-| Field | Meaning |
-| --- | --- |
-| `inputCsv` | CSV to enrich instead of discovering rows |
-| `domainColumn` / `nameColumn` | Header names to read (default `Domain` / `Company`) |
-| `lookupCompany` | Look each domain up to fill description, employees, HQ (default `true`, 2 credits/row) |
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `inputCsv` | string | — | CSV to enrich instead of discovering rows |
+| `domainColumn` / `nameColumn` | string | `Domain` / `Company` | Header names to read |
+| `lookupCompany` | boolean | `true` | Resolve each domain to a company record (2 credits/row) |
 
 ### Columns
 
-| Field | Meaning |
-| --- | --- |
-| `header` | CSV column name |
-| `question` | Plain-English question. Reference nothing — the whole row is supplied as context |
-| `type` | `string` (default), `number`, `boolean`, `list` |
-| `research` | `none` (row only), `page` (homepage), `web` (search + read the top hit) |
-| `fallback` | In `page` mode, fall back to `web` when a site is dead (default `true`) |
-| `maxChars`, `numResults`, `readTop`, `pageUrl` | Research tuning |
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `header` | string | — | CSV column name |
+| `question` | string | — | Question answered for each row |
+| `type` | string | `string` | `string`, `number`, `boolean`, `list` |
+| `research` | string | `none` | `none`, `page` (homepage), `web` (search + top hit) |
+| `fallback` | boolean | `true` | In `page` mode, use `web` when the site cannot be read |
+| `pageUrl` | string | — | Override the page read in `page` mode |
+| `maxChars` | number | 12000 / 6000 | Characters kept from a page |
+| `numResults` | number | 5 | Search results per question |
+| `readTop` | boolean | `true` | In `web` mode, scrape the top hit when it has no passages |
 
-`concurrency` (default 4) caps in-flight **cells**, across rows and columns.
+`concurrency` (default 4) caps in-flight cells across rows and columns.
 
 ## Output
 
 ```
 out/<name>-<timestamp>/
-  rows.csv        flat values, ready for Sheets or Excel
-  rows.jsonl      every cell with confidence + sources, plus the full company record
-  manifest.json   credits, tokens, wall time, per-cell failures
+  rows.csv
+  rows.jsonl
+  manifest.json
 ```
 
-`rows.csv`:
+`rows.csv` — one row per company, one column per question:
 
 ```csv
 Company,Domain,Description,Industry,Headquarters,Employees,Founded,Funding USD,What they do,CEO,Free tier,Employees (context.dev)
 Stripe,stripe.com,"Stripe provides financial infrastructure…",Financial Services,"San Francisco, CA, US",8000,2010,,…,Patrick Collison,false,
 ```
 
-An AI column that collides with a Context.dev field keeps its name; the Context.dev one is suffixed.
+A Context.dev field that shares a name with an AI column is suffixed `(context.dev)`.
 
-`rows.jsonl`:
+`rows.jsonl` — per cell: `value`, `confidence`, `sources`, `ms`, and `error` when the cell failed:
 
 ```json
 {"row":0,"company":{"name":"Stripe","domain":"stripe.com"},"cells":{"CEO":{"value":"Patrick Collison","confidence":1,"sources":["https://stripe.com/about"],"ms":6008}}}
 ```
 
+`manifest.json` — `contextCredits`, `modelCalls`, `modelTokens`, `wallMs`, and every failed cell.
+
 ## Cost and speed
 
 Measured with DeepSeek V4.1 Flash on Workers AI, concurrency 6–8:
 
-| Run | Wall time | Context.dev credits | Model tokens |
+| Run | Wall time | Credits | Tokens |
 | --- | --- | --- | --- |
-| 3 rows × 4 columns (CSV input) | ~16s | 27 | ~18k |
-| 6 rows × 4 columns (discovery) | ~61s | 45 | ~32k |
+| 3 rows × 4 columns (CSV input) | 16s | 27 | 18k |
+| 6 rows × 4 columns (discovery) | 61s | 45 | 32k |
 
-Context.dev charges 2 credits per company-search page, 1 per web search, 1 per page scrape. Page reads are cached per
-URL per run, so several columns on one row cost one scrape.
+Context.dev charges 2 credits per company-search page, 1 per web search, 1 per page scrape. Pages are cached per URL per
+run, so several columns on one row cost one scrape.
 
-## Picking a model
+## Models
 
 | Model | Notes |
 | --- | --- |
-| `@cf/deepseek-ai/deepseek-v4.1-flash-1017` | Best quality/speed on Workers AI: ~4s per cell, 6/6 correct in testing |
-| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Fastest (~2s), but returns `null` more often on open-ended questions |
-| `@cf/openai/gpt-oss-120b` | Strongest reasoning, 15–80s per cell; needs a large `maxTokens` or it returns nothing |
-| `gpt-4.1-mini` / `gpt-5.4-mini` | Good defaults on OpenAI |
+| `@cf/deepseek-ai/deepseek-v4.1-flash-1017` | Best quality/speed on Workers AI: ~4s per cell |
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Fastest (~2s); more `null` answers on open-ended questions |
+| `@cf/openai/gpt-oss-120b` | Strongest reasoning, 15–80s per cell; needs a high `maxTokens` |
+| `gpt-4.1-mini`, `gpt-5.4-mini` | OpenAI defaults |
 
-Avoid `@cf/qwen/*`, `@cf/meta/llama-4-scout-*` and `@cf/mistralai/*` on the gateway: they produced wrong answers or
-JSON corrupted at escaped quotes in testing.
+Not recommended on the Workers AI gateway: `@cf/qwen/*`, `@cf/meta/llama-4-scout-*`, `@cf/mistralai/*` — wrong answers
+or JSON corrupted at escaped quotes in testing.
 
-## Notes
+## Behaviour
 
-- `null` means the model could not establish the answer. It is told never to invent facts, so specific questions
-  ("Who is the CEO?") land far more often than open-ended ones ("What does this company do?").
-- Cells are independent: a failed cell is recorded in `manifest.json` and the run continues.
-- `--dry-run` costs only the row-discovery credits and prints what would be enriched.
+- `null` means the answer could not be established; the model is instructed not to invent facts.
+- A failed cell is recorded in `manifest.json` and `rows.jsonl`; the run continues.
+- Research is fixed per column (`page` or `web`), not chosen by the model, so cost and latency are predictable.
 
 ## Tests
 
